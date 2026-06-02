@@ -1,32 +1,41 @@
 from llm_sdk import Small_LLM_Model
+from .models import Prompt, FunctionDefinition
+from .prompt_builder import build_prompt
 
 
-def process(input_ids: list[int]) -> None:
-    llm = Small_LLM_Model()
-    given_text = """Return ONLY valid JSON.
-    Do not explain.
-    Do not write any text outside JSON.
-
-    Answer:
-    """
-    encoded_text = llm.encode(given_text)
-
-    print("=== Processing ===")
-    input_ids = encoded_text[0].tolist()
-    print(input_ids)
+def generate_output(
+        input_ids: list[int],
+        llm: Small_LLM_Model) -> list[int]:
 
     # generate response
-    response = []
-    decoded_response = ""
+    output_ids = []
     for _ in range(100):
         logits = llm.get_logits_from_input_ids(input_ids)
         selected_token_id = max(range(len(logits)), key=lambda i: logits[i])
-        response.append(selected_token_id)
+        output_ids.append(selected_token_id)
         input_ids.append(selected_token_id)
-    print(response)
-    for i in range(len(response)):
-        answer = llm.decode(response[i])
-        decoded_response += answer
 
-    print("=== Response ===")
-    print(decoded_response)
+        text = llm.decode(output_ids).strip()
+        if text.startswith("{") and text.count("{") == text.count("}"):
+            break
+
+    return output_ids
+
+
+def decode_prompts(functions: list[FunctionDefinition],
+                   prompt_items: list[Prompt],
+                   llm: Small_LLM_Model) -> list[list[int]]:
+    # 各プロンプトに対してオリジナルのプロンプトを作成してencodeする
+    results = []
+    for item in prompt_items:
+        prompt = build_prompt(functions, item)
+        encoded_prompt = llm.encode(prompt)
+        input_ids = encoded_prompt[0].tolist()
+        output = generate_output(input_ids, llm)
+        results.append(output)
+
+        # 1プロンプト分が終わったタイミングで出力
+        print(llm.decode(output), flush=True)
+        print("---", flush=True)
+
+    return results
