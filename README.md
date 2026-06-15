@@ -57,3 +57,10 @@ valid token だけ残す
 input_idsに追加
   ↓
 繰り返し
+
+
+prompt_builder.py: スキーマ・関数説明・出力指示の構築
+decoder.py: 有効トークン取得・制約付き選択・JSON解析・検証
+models.py: Function Call作成・パラメータ検証
+json_loader.py: JSON読込・入力データ検証
+__main__.py: 結果変換・JSON保存・エラー結果作成
