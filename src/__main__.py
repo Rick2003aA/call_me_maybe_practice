@@ -53,3 +53,7 @@ def create_error_result(prompt: str, error: Exception) -> dict[str, str]:
 
 if __name__ == "__main__":
     main()
+
+
+fuck
+
