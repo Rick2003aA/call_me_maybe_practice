@@ -40,7 +40,8 @@ Python側で実際の関数を実行
   "s": {
     "type": "string"
   }
-},
+  },
+}
 
 prompt
   ↓

@@ -1,5 +1,6 @@
 from llm_sdk import Small_LLM_Model
 from typing import Any
+import argparse
 
 from .json_loader import load_function_definitions, load_prompt_items
 from .decoder import decode_prompts
@@ -7,7 +8,7 @@ from .decoder import decode_prompts
 
 # 結果をJSONファイルに書き出す
 # 結果をJSONファイルに書き出す
-def main():
+def main() -> None:
     # LLMモデルを用意する
     llm = Small_LLM_Model()
 
@@ -15,11 +16,22 @@ def main():
     # 1. 材料を読み込む
     # =========================
 
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument('--functions_definition',
+                        default='data/input/functions_definition.json')
+    parser.add_argument('--input',
+                        default='data/input/function_calling_tests.json')
+    parser.add_argument('--output',
+                        default='data/output/function_calling_results.json')
+
+    args = parser.parse_args()
+
     # 関数定義JSONを読み込む(インスタンス化)
-    functions = load_function_definitions("data/input/functions_definition.json")
+    functions = load_function_definitions(args.functions_definition)
 
     # テスト用のプロンプトJSONを読み込む（インスタンス化）
-    prompt_items = load_prompt_items("data/input/function_calling_tests.json")
+    prompt_items = load_prompt_items(args.input)
 
     # =========================
     # 2. LLMを使ってJSONを作ってもらう
@@ -30,7 +42,8 @@ def main():
     # # =========================
     # # 3. 結果をJSONファイルに書き出す
     # # =========================
-    # print(answer)
+    with open(args.output, 'w', encoding='utf-8') as f:
+        f.write(result)
 
 
 def decode_result_to_function_call(
@@ -53,7 +66,3 @@ def create_error_result(prompt: str, error: Exception) -> dict[str, str]:
 
 if __name__ == "__main__":
     main()
-
-
-fuck
-
