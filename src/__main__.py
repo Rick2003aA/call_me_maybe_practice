@@ -3,7 +3,19 @@ from typing import Any
 import argparse
 
 from .json_loader import load_function_definitions, load_prompt_items
-from .decoder import decode_prompts
+from .decoder import generate_outputs, decode_result_to_function_call
+
+
+def save_results(results: list[dict[str, Any]], output_path: str) -> None:
+    """Function Callの結果をJSONファイルへ書き込む。"""
+    with open(output_path, 'w', encoding='utf-8') as f:
+        f.write(results)
+    raise NotImplementedError
+
+
+def create_error_result(prompt: str, error: Exception) -> dict[str, str]:
+    """処理に失敗したプロンプトについて保存可能なエラー結果を作成する。"""
+    raise NotImplementedError
 
 
 # 結果をJSONファイルに書き出す
@@ -36,32 +48,17 @@ def main() -> None:
     # =========================
     # 2. LLMを使ってJSONを作ってもらう
     # =========================
-    result = decode_prompts(functions, prompt_items, llm)
-    print(result)
+    output_ids_list = generate_outputs(functions, prompt_items, llm)
+
+    function_call_results = []
+    for output_ids in output_ids_list:
+        function_call = decode_result_to_function_call(output_ids, llm)
+        function_call_results.append(function_call)
 
     # # =========================
-    # # 3. 結果をJSONファイルに書き出す
+    # # 3. 結果をdecodeして辞書に変換してからJSONファイルに書き出す
     # # =========================
-    with open(args.output, 'w', encoding='utf-8') as f:
-        f.write(result)
 
-
-def decode_result_to_function_call(
-        output_ids: list[int],
-        llm: Small_LLM_Model,
-        ) -> dict[str, Any]:
-    """生成されたトークンIDをFunction Callの辞書へ変換する。"""
-    raise NotImplementedError
-
-
-def save_results(results: list[dict[str, Any]], output_path: str) -> None:
-    """Function Callの結果をJSONファイルへ書き込む。"""
-    raise NotImplementedError
-
-
-def create_error_result(prompt: str, error: Exception) -> dict[str, str]:
-    """処理に失敗したプロンプトについて保存可能なエラー結果を作成する。"""
-    raise NotImplementedError
 
 
 if __name__ == "__main__":

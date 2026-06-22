@@ -1,3 +1,5 @@
+import json
+
 from llm_sdk import Small_LLM_Model
 from typing import Any
 
@@ -5,7 +7,7 @@ from .models import Prompt, FunctionDefinition
 from .prompt_builder import build_prompt
 
 
-def generate_output(
+def generate_greedy_output(
         input_ids: list[int],
         llm: Small_LLM_Model) -> list[int]:
 
@@ -24,16 +26,16 @@ def generate_output(
     return output_ids
 
 
-def decode_prompts(functions: list[FunctionDefinition],
-                   prompt_items: list[Prompt],
-                   llm: Small_LLM_Model) -> list[list[int]]:
+def generate_outputs(functions: list[FunctionDefinition],
+                     prompt_items: list[Prompt],
+                     llm: Small_LLM_Model) -> list[list[int]]:
     # 各プロンプトに対してオリジナルのプロンプトを作成してencodeする
     results = []
     for item in prompt_items:
         prompt = build_prompt(functions, item)
         encoded_prompt = llm.encode(prompt)
         input_ids = encoded_prompt[0].tolist()
-        output = generate_output(input_ids, llm)
+        output = generate_greedy_output(input_ids, llm)
         results.append(output)
 
         # 1プロンプト分が終わったタイミングで出力
@@ -41,6 +43,26 @@ def decode_prompts(functions: list[FunctionDefinition],
         print("---", flush=True)
 
     return results
+
+
+def decode_result_to_function_call(
+        result: list[int],
+        llm: Small_LLM_Model,
+        ) -> dict[str, Any]:
+    """生成されたトークンIDをFunction Callの辞書へ変換する。"""
+    generated_text = llm.decode(result)
+    function_call = json.loads(generated_text)
+    return function_call
+
+
+
+
+
+
+
+
+
+
 
 
 def get_valid_token_ids(
