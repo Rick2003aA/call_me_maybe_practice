@@ -3,7 +3,7 @@ import json
 from llm_sdk import Small_LLM_Model
 from typing import Any
 
-from .models import Prompt, FunctionDefinition
+from .models import Prompt, FunctionDefinition, validate_required_parameters
 from .prompt_builder import build_prompt
 
 
@@ -45,51 +45,34 @@ def generate_outputs(functions: list[FunctionDefinition],
     return results
 
 
+def parse_function_call(generated_text: str) -> dict[str, Any]:
+    function_call = json.loads(generated_text)
+
+    if not isinstance(function_call, dict):
+        raise ValueError("Function call must be a JSON object")
+
+    if "name" not in function_call:
+        raise ValueError("Function call must contain name")
+
+    if "parameters" not in function_call:
+        raise ValueError("Function call must contain parameters")
+
+    if not isinstance(function_call["name"], str):
+        raise ValueError("Function call name must be a string")
+
+    if not isinstance(function_call["parameters"], dict):
+        raise ValueError("Function call parameters must be an object")
+
+    return function_call
+
+
 def decode_result_to_function_call(
         result: list[int],
         llm: Small_LLM_Model,
         ) -> dict[str, Any]:
     """生成されたトークンIDをFunction Callの辞書へ変換する。"""
     generated_text = llm.decode(result)
-    function_call = json.loads(generated_text)
-    return function_call
-
-
-
-
-
-
-
-
-
-
-
-
-def get_valid_token_ids(
-        generated_text: str,
-        functions: list[FunctionDefinition],
-        llm: Small_LLM_Model,
-        ) -> list[int]:
-    """生成途中のFunction Call JSONに続けられる有効なトークンIDを返す。"""
-    raise NotImplementedError
-
-
-def select_constrained_token(
-        logits: list[float],
-        valid_token_ids: list[int],
-        ) -> int:
-    """許可されたトークンIDの中からスコアが最も高いものを選択する。"""
-    raise NotImplementedError
-
-
-def is_complete_function_call(generated_text: str) -> bool:
-    """生成テキストに完全なFunction Call JSONが1つ含まれるか判定する。"""
-    raise NotImplementedError
-
-
-def parse_function_call(generated_text: str) -> dict[str, Any]:
-    """生成されたJSONテキストをFunction Callの辞書へ変換する。"""
-    raise NotImplementedError
+    return parse_function_call(generated_text)
 
 
 def validate_function_call(
@@ -97,14 +80,13 @@ def validate_function_call(
         functions: list[FunctionDefinition],
         ) -> bool:
     """関数名、パラメータ名、パラメータ値の型が正しいか検証する。"""
-    raise NotImplementedError
+    function_name = function_call["name"]
 
+    for function_definition in functions:
+        if function_definition.name == function_name:
+            return validate_required_parameters(
+                function_call["parameters"],
+                function_definition,
+            )
 
-def generate_constrained_output(
-        input_ids: list[int],
-        functions: list[FunctionDefinition],
-        llm: Small_LLM_Model,
-        max_tokens: int = 100,
-        ) -> list[int]:
-    """次に選択できるトークンを制限しながらFunction Call JSONを生成する。"""
-    raise NotImplementedError
+    return False

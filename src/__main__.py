@@ -1,6 +1,7 @@
 from llm_sdk import Small_LLM_Model
 from typing import Any
 import argparse
+import json
 
 from .json_loader import load_function_definitions, load_prompt_items
 from .decoder import generate_outputs, decode_result_to_function_call
@@ -9,8 +10,7 @@ from .decoder import generate_outputs, decode_result_to_function_call
 def save_results(results: list[dict[str, Any]], output_path: str) -> None:
     """Function Callの結果をJSONファイルへ書き込む。"""
     with open(output_path, 'w', encoding='utf-8') as f:
-        f.write(results)
-    raise NotImplementedError
+        json.dump(results, f)
 
 
 def create_error_result(prompt: str, error: Exception) -> dict[str, str]:
@@ -58,7 +58,7 @@ def main() -> None:
     # # =========================
     # # 3. 結果をdecodeして辞書に変換してからJSONファイルに書き出す
     # # =========================
-
+    save_results(function_call_results, args.output)
 
 
 if __name__ == "__main__":
