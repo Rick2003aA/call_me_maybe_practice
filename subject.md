@@ -496,3 +496,179 @@ display, or adjust a data structure to store new information, etc.
 The details (scope, target, etc.) will be specified in the evaluation guidelines and may
 vary from one evaluation to another for the same project.
 20
+
+
+Step 1: select_constrained_token
+これは一番簡単です。
+def select_constrained_token(
+        logits: list[float],
+        valid_token_ids: list[int],
+        ) -> int:
+    if not valid_token_ids:
+        raise ValueError("No valid tokens available")
+
+    return max(valid_token_ids, key=lambda token_id: logits[token_id])
+これは「全 token から最大」ではなく、「許可された token の中から最大」を選びます。
+Step 2: is_complete_function_call
+これは今ある関数を再利用します。
+def is_complete_function_call(
+        generated_text: str,
+        functions: list[FunctionDefinition],
+        ) -> bool:
+    try:
+        function_call = parse_function_call(generated_text)
+    except ValueError:
+        return False
+    except json.JSONDecodeError:
+        return False
+
+    return validate_function_call(function_call, functions)
+役割は「この文字列はもう完成として止めていいか？」です。
+Step 3: generate_constrained_output
+形は generate_greedy_output() にかなり近いです。
+def generate_constrained_output(
+        input_ids: list[int],
+        functions: list[FunctionDefinition],
+        llm: Small_LLM_Model,
+        ) -> list[int]:
+    output_ids = []
+
+    for _ in range(100):
+        logits = llm.get_logits_from_input_ids(input_ids)
+
+        valid_token_ids = get_valid_token_ids(
+            output_ids,
+            functions,
+            llm,
+            len(logits),
+        )
+
+        selected_token_id = select_constrained_token(logits, valid_token_ids)
+
+        output_ids.append(selected_token_id)
+        input_ids.append(selected_token_id)
+
+        generated_text = llm.decode(output_ids).strip()
+        if is_complete_function_call(generated_text, functions):
+            break
+
+    return output_ids
+ここまではかなり素直です。
+一番難しいところ
+本当に難しいのは get_valid_token_ids() です。
+ここでは、全 token に対して、
+今の output_ids にこの token を足したら、まだ正しい JSON の途中としてありえるか？
+を判定します。
+最初の実装方針はこれでいいです。
+def get_valid_token_ids(
+        output_ids: list[int],
+        functions: list[FunctionDefinition],
+        llm: Small_LLM_Model,
+        vocab_size: int,
+        ) -> list[int]:
+    valid_token_ids = []
+
+    for token_id in range(vocab_size):
+        candidate_ids = output_ids + [token_id]
+        candidate_text = llm.decode(candidate_ids)
+
+        if is_valid_function_call_prefix(candidate_text, functions):
+            valid_token_ids.append(token_id)
+
+    return valid_token_ids
+そして次に is_valid_function_call_prefix() を作ります。
+def is_valid_function_call_prefix(
+        text: str,
+        functions: list[FunctionDefinition],
+        ) -> bool:
+    ...
+この関数が constrained decoding の心臓です。
+最初は完璧な JSON parser を作ろうとしなくていいです。まずは、出力形式を固定します。
+{"name":"fn_greet","parameters":{"name":"john"}}
+つまり Python 側で許す構造をこれだけにする。
+{
+"name"
+:
+関数名
+,
+"parameters"
+:
+{
+引数
+}
+}
+LLMに自由に出させる部分は、
+関数名
+number の値
+string の値
+boolean の値
+だけです。
+今日の設計としては、まずここまでで十分です。
+1. select_constrained_token を作る
+2. is_complete_function_call を作る
+3. generate_constrained_output を作る
+4. get_valid_token_ids は is_valid_function_call_prefix に任せる形にする
+5. is_valid_function_call_prefix の設計を詰める
+次にコードを書くなら、最初に書くべき順番はこれです。
+select_constrained_token()
+is_complete_function_call()
+generate_constrained_output()
+generate_outputs() 内の呼び出しを一時的に切り替える
+まだ get_valid_token_ids() が難しいので、最初は仮実装でもOKです。
+def get_valid_token_ids(...):
+    return list(range(vocab_size))
+これだとまだ greedy と同じですが、constrained decoding に切り替える入口ができます。
+その後で get_valid_token_ids() を少しずつ賢くしていけばいいです。
+なので、次にやる具体的な作業はこれです。
+src/decoder.py に
+- select_constrained_token()
+- is_complete_function_call()
+- get_valid_token_ids()
+- generate_constrained_output()
+を追加する
+
+generate_outputs() の中で
+generate_greedy_output(input_ids, llm)
+を
+generate_constrained_output(input_ids, functions, llm)
+に変えられる形にする
+まずは「制約の中で token を選ぶパイプライン」を作る。
+そのあと「何を有効 token とするか」を強くしていく、という順番が一番迷子になりにくいです。
+
+3:47 PM
+
+
+
+
+
+
+
+
+
+Add to chat
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Ask for approval
+
+5.5Medium
+
+
+
+
+
+
+
+
+Work locally

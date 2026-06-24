@@ -13,11 +13,6 @@ def save_results(results: list[dict[str, Any]], output_path: str) -> None:
         json.dump(results, f)
 
 
-def create_error_result(prompt: str, error: Exception) -> dict[str, str]:
-    """処理に失敗したプロンプトについて保存可能なエラー結果を作成する。"""
-    raise NotImplementedError
-
-
 # 結果をJSONファイルに書き出す
 # 結果をJSONファイルに書き出す
 def main() -> None:
@@ -47,13 +42,20 @@ def main() -> None:
 
     # =========================
     # 2. LLMを使ってJSONを作ってもらう
+    # ここで生成されるのは各テストプロンプトに対するtokenのlist[list[]]
     # =========================
     output_ids_list = generate_outputs(functions, prompt_items, llm)
 
     function_call_results = []
-    for output_ids in output_ids_list:
-        function_call = decode_result_to_function_call(output_ids, llm)
-        function_call_results.append(function_call)
+    for item, output_ids in zip(prompt_items, output_ids_list):
+        function_call = decode_result_to_function_call(output_ids,
+                                                       functions,
+                                                       llm)
+        function_call_results.append({
+                "prompt": item.prompt,
+                "name": function_call["name"],
+                "parameters": function_call["parameters"]
+        })
 
     # # =========================
     # # 3. 結果をdecodeして辞書に変換してからJSONファイルに書き出す
