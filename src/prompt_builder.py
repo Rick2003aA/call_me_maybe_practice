@@ -35,18 +35,3 @@ def build_prompt(
     prompt += "Output:\n"
 
     return prompt
-
-
-def build_function_schema(functions: list[FunctionDefinition]) -> dict:
-    """生成するFunction Callを制約するJSONスキーマを作成する。"""
-    raise NotImplementedError
-
-
-def format_function_description(function_definition: FunctionDefinition) -> str:
-    """1つの関数定義をLLMのプロンプトに含める形式へ整形する。"""
-    raise NotImplementedError
-
-
-def build_output_format_instruction(functions: list[FunctionDefinition]) -> str:
-    """必要なFunction Callの出力形式を説明する指示文を作成する。"""
-    raise NotImplementedError

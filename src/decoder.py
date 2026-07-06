@@ -41,7 +41,7 @@ def generate_outputs(functions: list[FunctionDefinition],
     return results
 
 
-# ＝＝＝　Constrained Decoding 関連の実装　＝＝＝
+# ＝＝＝　Parameterのタイプ別の挙動　＝＝＝
 
 def is_valid_string_prefix(value_text: str) -> tuple[bool, int | None]:
     if not value_text:
@@ -52,13 +52,70 @@ def is_valid_string_prefix(value_text: str) -> tuple[bool, int | None]:
 
     index = 1
 
+    while index < len(value_text):
+        if value_text[index] == '"':
+            return True, index + 1
+        index += 1
+
+    return True, None
+
 
 def is_valid_number_prefix(value_text: str) -> tuple[bool, int | None]:
-    pass
+    if not value_text:
+        return True, None
+
+    index = 0
+
+    if value_text[index] == "-":
+        index += 1
+
+        if index == len(value_text):
+            return True, None
+
+    if index == len(value_text) or not value_text[index].isdigit():
+        return False, None
+
+    while index < len(value_text) and value_text[index].isdigit():
+        index += 1
+
+    # 小数点に関する処理
+    if index < len(value_text) and value_text[index] == ".":
+        index += 1
+
+        if index == len(value_text):
+            return True, None
+
+        if not value_text[index].isdigit():
+            return False, None
+
+        while index < len(value_text) and value_text[index].isdigit():
+            index += 1
+
+    return True, index
 
 
 def is_valid_boolean_prefix(value_text: str) -> tuple[bool, int | None]:
-    pass
+    if not value_text:
+        return True, None
+
+    if value_text.startswith("true"):
+        return True, 4
+
+    # 途中用
+    if "true".startswith(value_text):
+        return True, None
+
+    if value_text.startswith("false"):
+        return True, 5
+
+    # 途中用
+    if "false".startswith(value_text):
+        return True, None
+
+    return False, None
+
+
+# ==== Constrained Decoding を調整する関数 ====
 
 
 def is_valid_function_call_prefix(
@@ -67,48 +124,58 @@ def is_valid_function_call_prefix(
         ) -> bool:
     """Function Call JSONとして完成可能なprefixか判定する。"""
     for function in functions:
+        # ==== 関数の選択 ====
         parameter_names = list(function.parameters.keys())
+        function_prefix = (
+            f'{{"name":"{function.name}",'
+            f'"parameters":{{'
+        )
 
-        if not parameter_names:
-            expected = (
-                f'{{"name":"{function.name}",'
-                f'"parameters":{{}}}}'
-            )
-            if expected.startswith(generated_text):
+        if function_prefix.startswith(generated_text):
+            return True
+
+        if not generated_text.startswith(function_prefix):
+            continue
+
+        # ==== パラメータの抽出 ====
+        remaining_text = generated_text[len(function_prefix):]
+        for parameter_index, parameter_name in enumerate(parameter_names):
+            parameter_prefix = f'"{parameter_name}":'
+            if parameter_index > 0:
+                parameter_prefix = "," + parameter_prefix
+            if parameter_prefix.startswith(remaining_text):
                 return True
-            continue
-        else:
-            first_parameter = parameter_names[0]
-            expected = (
-                f'{{"name":"{function.name}",'
-                f'"parameters":{{"{first_parameter}":'
-            )
+            if not remaining_text.startswith(parameter_prefix):
+                return False
 
-        if expected.startswith(generated_text):
-            return True
-        if not generated_text.startswith(expected):
-            continue
+            remaining_text = remaining_text[len(parameter_prefix):]
 
-        parameter_type = function.parameters[first_parameter].type
-        value_text = generated_text[len(expected):]
+            parameter_type = function.parameters[parameter_name].type
+            value_text = remaining_text
 
-        if parameter_type == "string":
-            is_valid, end_index = is_valid_string_prefix(value_text)
-        elif parameter_type == "number":
-            is_valid, end_index = is_valid_number_prefix(value_text)
-        elif parameter_type == "boolean":
-            is_valid, end_index = is_valid_boolean_prefix(value_text)
-        else:
-            return False
+            if parameter_type == "string":
+                is_valid, end_index = is_valid_string_prefix(value_text)
+            elif parameter_type == "number":
+                is_valid, end_index = is_valid_number_prefix(value_text)
+            elif parameter_type == "boolean":
+                is_valid, end_index = is_valid_boolean_prefix(value_text)
+            else:
+                return False
 
-        if not is_valid:
-            return False
+            if not is_valid:
+                return False
 
-        if end_index is None:
-            # 正しい値の途中
+            if end_index is None:
+                return True
+
+            remaining_text = value_text[end_index:]
+
+        expected_suffix = "}}"
+        if expected_suffix.startswith(remaining_text):
             return True
 
-        remaining_text = value_text[end_index:]
+        return False
+    return False
 
 
 def get_valid_token_ids(output_ids: list[int],
