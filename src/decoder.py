@@ -43,15 +43,72 @@ def generate_outputs(functions: list[FunctionDefinition],
 
 # ＝＝＝　Constrained Decoding 関連の実装　＝＝＝
 
+def is_valid_string_prefix(value_text: str) -> tuple[bool, int | None]:
+    if not value_text:
+        return True, None
 
-def is_valid_function_call_prefix(generated_text: str,
-                                  functions: list[FunctionDefinition]
-                                  ) -> bool:
-    """
-    生成途中の文字列が、正しいFunction Call JSONとして完成できるかを判定。
-    固定部分、関数名、parameter値の三種類種類別で絞り込む働き。
-    """
+    if value_text[0] != '"':
+        return False, None
+
+    index = 1
+
+
+def is_valid_number_prefix(value_text: str) -> tuple[bool, int | None]:
     pass
+
+
+def is_valid_boolean_prefix(value_text: str) -> tuple[bool, int | None]:
+    pass
+
+
+def is_valid_function_call_prefix(
+        generated_text: str,
+        functions: list[FunctionDefinition],
+        ) -> bool:
+    """Function Call JSONとして完成可能なprefixか判定する。"""
+    for function in functions:
+        parameter_names = list(function.parameters.keys())
+
+        if not parameter_names:
+            expected = (
+                f'{{"name":"{function.name}",'
+                f'"parameters":{{}}}}'
+            )
+            if expected.startswith(generated_text):
+                return True
+            continue
+        else:
+            first_parameter = parameter_names[0]
+            expected = (
+                f'{{"name":"{function.name}",'
+                f'"parameters":{{"{first_parameter}":'
+            )
+
+        if expected.startswith(generated_text):
+            return True
+        if not generated_text.startswith(expected):
+            continue
+
+        parameter_type = function.parameters[first_parameter].type
+        value_text = generated_text[len(expected):]
+
+        if parameter_type == "string":
+            is_valid, end_index = is_valid_string_prefix(value_text)
+        elif parameter_type == "number":
+            is_valid, end_index = is_valid_number_prefix(value_text)
+        elif parameter_type == "boolean":
+            is_valid, end_index = is_valid_boolean_prefix(value_text)
+        else:
+            return False
+
+        if not is_valid:
+            return False
+
+        if end_index is None:
+            # 正しい値の途中
+            return True
+
+        remaining_text = value_text[end_index:]
 
 
 def get_valid_token_ids(output_ids: list[int],
@@ -113,6 +170,7 @@ def generate_constrained_output(input_ids: list[int],
     raise ValueError("Could not generate a complete function call")
 
 # ＝＝＝　生成後の確認用関数　＝＝＝
+
 
 def parse_function_call(generated_text: str) -> dict[str, Any]:
     '''
