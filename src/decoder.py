@@ -9,13 +9,6 @@ from .prompt_builder import build_prompt
 
 # ＝＝＝　生成系の関数　＝＝＝
 
-def get_valid_token_ids() -> list[int]:
-    """
-    生成途中のテキストを見て、次に出して良いtoken_idだけ返す
-    """
-    pass
-
-
 def select_constrained_token(
         logits: list[float],
         valid_token_ids: list[int]
@@ -29,32 +22,6 @@ def select_constrained_token(
     return max(valid_token_ids, key=lambda token_id: logits[token_id])
 
 
-def generate_constrained_output() -> list[int]:
-    """
-    generate_greedy_outputの上位互換
-    """
-    pass
-
-
-def generate_greedy_output(
-        input_ids: list[int],
-        llm: Small_LLM_Model) -> list[int]:
-
-    # generate response
-    output_ids = []
-    for _ in range(100):
-        logits = llm.get_logits_from_input_ids(input_ids)
-        selected_token_id = max(range(len(logits)), key=lambda i: logits[i])
-        output_ids.append(selected_token_id)
-        input_ids.append(selected_token_id)
-
-        text = llm.decode(output_ids).strip()
-        if text.startswith("{") and text.count("{") == text.count("}"):
-            break
-
-    return output_ids
-
-
 def generate_outputs(functions: list[FunctionDefinition],
                      prompt_items: list[Prompt],
                      llm: Small_LLM_Model) -> list[list[int]]:
@@ -64,7 +31,7 @@ def generate_outputs(functions: list[FunctionDefinition],
         prompt = build_prompt(functions, item)
         encoded_prompt = llm.encode(prompt)
         input_ids = encoded_prompt[0].tolist()
-        output = generate_greedy_output(input_ids, llm)
+        output = generate_constrained_output(input_ids, functions, llm)
         results.append(output)
 
         # 1プロンプト分が終わったタイミングで出力
@@ -73,6 +40,77 @@ def generate_outputs(functions: list[FunctionDefinition],
 
     return results
 
+
+# ＝＝＝　Constrained Decoding 関連の実装　＝＝＝
+
+
+def is_valid_function_call_prefix(generated_text: str,
+                                  functions: list[FunctionDefinition]
+                                  ) -> bool:
+    """
+    生成途中の文字列が、正しいFunction Call JSONとして完成できるかを判定。
+    固定部分、関数名、parameter値の三種類種類別で絞り込む働き。
+    """
+    pass
+
+
+def get_valid_token_ids(output_ids: list[int],
+                        functions: list[FunctionDefinition],
+                        llm: Small_LLM_Model,
+                        logits_len: int
+                        ) -> list[int]:
+    """
+    生成途中のテキストを見て、次に出して良いtoken_idだけ返す
+    """
+    valid_token_ids: list[int] = []
+    current_text = llm.decode(output_ids)
+
+    for token_id in range(logits_len):
+        candidate_ids = output_ids + [token_id]
+        candidate_text = llm.decode(candidate_ids)
+
+        if candidate_text == current_text:
+            continue
+
+        if is_valid_function_call_prefix(candidate_text, functions):
+            valid_token_ids.append(token_id)
+
+    return valid_token_ids
+
+
+def generate_constrained_output(input_ids: list[int],
+                                functions: list[FunctionDefinition],
+                                llm: Small_LLM_Model
+                                ) -> list[int]:
+    """
+    logits取得→候補絞る→スコアの高いtokenを選択
+    →出力へ追加→completeなら終了
+    """
+    output_ids: list[int] = []
+    max_generated_tokens = 100
+    for _ in range(max_generated_tokens):
+        logits = llm.get_logits_from_input_ids(input_ids)
+        valid_token_ids = get_valid_token_ids(
+            output_ids,
+            functions,
+            llm,
+            len(logits)
+        )
+
+        selected_token_id = select_constrained_token(
+            logits,
+            valid_token_ids
+        )
+
+        output_ids.append(selected_token_id)
+        input_ids.append(selected_token_id)
+
+        generated_text = llm.decode(output_ids)
+
+        if is_complete_function_call(generated_text, functions):
+            return output_ids
+
+    raise ValueError("Could not generate a complete function call")
 
 # ＝＝＝　生成後の確認用関数　＝＝＝
 
@@ -137,6 +175,8 @@ def is_complete_function_call(
 
     return validate_function_call(function_call, functions)
 
+
+# ＝＝＝　生成後の後処理　＝＝＝
 
 def decode_result_to_function_call(
         result: list[int],
