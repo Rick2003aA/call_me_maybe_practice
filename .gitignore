@@ -12,3 +12,6 @@ venv/
 config/
 data/output/
 
+subject.md
+*.zip
+llm_sdk/uv.lock
