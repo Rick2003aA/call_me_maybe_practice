@@ -1,1 +1,14 @@
-llm_sdk/
+__pycache__/
+*.py[cod]
+*$py.class
+
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+
+.venv/
+venv/
+
+config/
+data/output/
+

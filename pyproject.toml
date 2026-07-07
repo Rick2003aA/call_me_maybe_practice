@@ -7,5 +7,18 @@ dependencies = [
     "pydantic>=2.13.4",
 ]
 
+[dependency-groups]
+dev = [
+    "flake8>=7.3.0",
+    "mypy>=1.16.0",
+]
+
+[tool.mypy]
+exclude = "^(llm_sdk|venv|\\.venv|config)/"
+
+[[tool.mypy.overrides]]
+module = ["llm_sdk", "llm_sdk.*"]
+ignore_missing_imports = true
+
 [tool.uv.sources]
 llm-sdk = { path = "./llm_sdk" }

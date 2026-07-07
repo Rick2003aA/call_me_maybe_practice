@@ -10,28 +10,49 @@ def build_prompt(
         functions: list[FunctionDefinition],
         prompt_item: Prompt,
         ) -> str:
-    prompt = "Return ONLY one valid JSON object. "\
-        "Choose the best function from the list and fill every required "\
-        "parameter using values extracted from the user prompt. "\
-        "Do not leave parameters empty unless the function has no parameters. "\
-        "Do not explain. DO NOT write Answer:.\n"
-
-    prompt += f"User prompt: {prompt_item.prompt}\n"
-    prompt += "Available functions:\n"
+    prompt = (
+        "Return exactly one JSON object for a function call.\n"
+        "Choose the best function from the list and fill all parameters.\n"
+        "Return no markdown, no explanation, no extra text.\n\n"
+        "Available functions:\n"
+    )
 
     for function in functions:
-        prompt += f"Function Name: {function.name}\n"
-        prompt += f"Description: {function.description}\n"
-        prompt += f"Parameters: {function.parameters}\n"
+        parameters = ", ".join(
+            f"{name}:{definition.type}"
+            for name, definition in function.parameters.items()
+        )
+        prompt += (
+            f"- {function.name}({parameters}): "
+            f"{function.description}\n"
+        )
 
-    prompt += "Parameter rules:\n"
-
-    for function in functions:
-        prompt += f"{function.name}: {function.parameters}\n"
-
-    prompt += "Regex hints: numbers use [0-9]+, vowels use [aeiouAEIOU], "\
-        "literal words use the word itself.\n"
-    prompt += 'Output format: {"name": "<function_name>", "parameters": {...}}\n'
-    prompt += "Output:\n"
+    prompt += (
+        "\nExtraction rules:\n"
+        "- Copy quoted text without the surrounding quote marks.\n"
+        "- Keep literal words and phrases literal.\n"
+        "- Do not add punctuation that is not part of the value.\n"
+        "- For source_string, use the full text being edited.\n"
+        "- For regex, output a regex pattern, not a natural-language label.\n"
+        "- For replacement, use only the new replacement text.\n"
+        "- For a named set of characters, use a regex character class.\n"
+        "- If the request replaces each matching character, match one "
+        "character at a time.\n"
+        "- For a specific word, phrase, or symbol, "
+        "use that literal target.\n\n"
+        "- If the same target appears multiple times, regex is still only "
+        "one occurrence of that target.\n\n"
+        "Word replacement example:\n"
+        "Request: Substitute the word 'red' with 'blue' in "
+        "'red car and red bus'\n"
+        'Parameters: {"source_string":"red car and red bus",'
+        '"regex":"red","replacement":"blue"}\n\n'
+        "Replacement mapping:\n"
+        "- asterisks -> *\n\n"
+        'Output format: '
+        '{"name":"function_name","parameters":{"key":"value"}}\n'
+        f"User prompt: {prompt_item.prompt}\n"
+        "Output:\n"
+    )
 
     return prompt
