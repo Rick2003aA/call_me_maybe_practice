@@ -1,4 +1,5 @@
 import json
+import heapq
 
 from llm_sdk import Small_LLM_Model  # type: ignore[attr-defined]
 from typing import Any
@@ -202,6 +203,40 @@ def get_valid_token_ids(output_ids: list[int],
     return valid_token_ids
 
 
+def get_cached_token_text(token_id: int,
+                          llm: Small_LLM_Model,
+                          token_text_cache: dict[int, str]
+                          ) -> str:
+    if token_id not in token_text_cache:
+        token_text_cache[token_id] = llm.decode([token_id])
+
+    return token_text_cache[token_id]
+
+
+def select_fast_constrained_token(output_ids: list[int],
+                                  functions: list[FunctionDefinition],
+                                  llm: Small_LLM_Model,
+                                  logits: list[float],
+                                  token_text_cache: dict[int, str]
+                                  ) -> int | None:
+    current_text = llm.decode(output_ids)
+    top_token_ids = heapq.nlargest(
+        4096,
+        range(len(logits)),
+        key=lambda token_id: logits[token_id]
+    )
+
+    for token_id in top_token_ids:
+        token_text = get_cached_token_text(token_id, llm, token_text_cache)
+        candidate_text = current_text + token_text
+
+        if is_valid_function_call_prefix(candidate_text, functions):
+            confirmed_text = llm.decode(output_ids + [token_id])
+            if is_valid_function_call_prefix(confirmed_text, functions):
+                return token_id
+    return None
+
+
 def generate_constrained_output(input_ids: list[int],
                                 functions: list[FunctionDefinition],
                                 llm: Small_LLM_Model
@@ -211,20 +246,29 @@ def generate_constrained_output(input_ids: list[int],
     →出力へ追加→completeなら終了
     """
     output_ids: list[int] = []
+    token_text_cache: dict[int, str] = {}
     max_generated_tokens = 100
     for _ in range(max_generated_tokens):
         logits = llm.get_logits_from_input_ids(input_ids)
-        valid_token_ids = get_valid_token_ids(
+        selected_token_id = select_fast_constrained_token(
             output_ids,
             functions,
             llm,
-            len(logits)
-        )
-
-        selected_token_id = select_constrained_token(
             logits,
-            valid_token_ids
+            token_text_cache
         )
+        if selected_token_id is None:
+            valid_token_ids = get_valid_token_ids(
+                output_ids,
+                functions,
+                llm,
+                len(logits)
+            )
+
+            selected_token_id = select_constrained_token(
+                logits,
+                valid_token_ids
+            )
 
         output_ids.append(selected_token_id)
         input_ids.append(selected_token_id)
