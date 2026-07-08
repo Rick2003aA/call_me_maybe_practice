@@ -211,13 +211,16 @@ During generation, the program does not accept arbitrary next tokens. It repeats
 the following loop:
 
 1. Send the current input token IDs to `Small_LLM_Model.get_logits_from_input_ids`.
-2. Try every possible next token ID from the logits range.
-3. Decode the candidate output prefix.
-4. Keep only tokens whose decoded text can still become a valid function-call
+2. Check the highest-scoring token IDs first.
+3. Reuse cached single-token decode results when building candidate prefixes.
+4. Confirm promising candidates with a full decode of the generated token IDs.
+5. If no valid token is found in the fast path, fall back to checking every
+   possible next token ID from the logits range.
+6. Keep only tokens whose decoded text can still become a valid function-call
    JSON object.
-5. Select the valid token with the highest logit score.
-6. Append it to the generated output.
-7. Stop when the generated text is complete JSON and matches the selected
+7. Select the valid token with the highest logit score.
+8. Append it to the generated output.
+9. Stop when the generated text is complete JSON and matches the selected
    function schema.
 
 The prefix validator enforces the following structure:
@@ -273,18 +276,23 @@ error instead of crashing with a traceback.
 The implementation prioritizes correctness and JSON validity. On the included
 test inputs, it produces valid JSON and schema-compliant function calls.
 
-The current decoder checks possible next tokens by decoding candidate prefixes.
-This is reliable and straightforward, but it is expensive because it scans the
-full logits range at each generated token. Long outputs, especially functions
-with several string parameters, are slower than short arithmetic or greeting
-calls.
+The current decoder first checks the top 4096 token IDs by logit score. It
+caches the decoded text for individual token IDs, uses that cached text for a
+quick prefix check, and only performs a full decode for candidates that still
+look valid. If no valid token is found in this fast path, it falls back to the
+complete vocabulary scan. This keeps the exact constrained-decoding behavior
+while avoiding most full decode calls during normal generation.
+
+Long outputs, especially functions with several string parameters, are still
+slower than short arithmetic or greeting calls because each generated token
+requires another model forward pass.
 
 Possible optimizations include:
 
-- caching token-to-text decoding results
 - precomputing valid literal prefixes for function names and parameter names
-- reducing the candidate token set before full prefix validation
 - using the vocabulary file directly for token filtering
+- using model key-value caching to avoid recomputing the full prompt history at
+  every generated token
 
 ## Reliability
 

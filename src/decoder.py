@@ -14,8 +14,17 @@ def select_constrained_token(
         logits: list[float],
         valid_token_ids: list[int]
         ) -> int:
-    """
-    logitsとvalid_token_idsを受け取り、有効なtoken_idの中で一番スコアが高いものを選ぶ
+    """Select the highest-scoring token from the valid token IDs.
+
+    Args:
+        logits: Model scores for the next token.
+        valid_token_ids: Token IDs allowed by the current constraint state.
+
+    Returns:
+        The valid token ID with the highest score.
+
+    Raises:
+        ValueError: If no valid token IDs are available.
     """
     if not valid_token_ids:
         raise ValueError("No valid tokens available")
@@ -26,6 +35,16 @@ def select_constrained_token(
 def generate_outputs(functions: list[FunctionDefinition],
                      prompt_items: list[Prompt],
                      llm: Small_LLM_Model) -> list[list[int]]:
+    """Generate constrained token outputs for every prompt item.
+
+    Args:
+        functions: Available function definitions.
+        prompt_items: Prompt items to process.
+        llm: Model wrapper used for tokenization, logits, and decoding.
+
+    Returns:
+        Generated token IDs for each prompt item.
+    """
     # 各プロンプトに対してオリジナルのプロンプトを作成してencodeする
     results = []
     for item in prompt_items:
@@ -45,6 +64,14 @@ def generate_outputs(functions: list[FunctionDefinition],
 # ＝＝＝　Parameterのタイプ別の挙動　＝＝＝
 
 def is_valid_string_prefix(value_text: str) -> tuple[bool, int | None]:
+    """Check whether a partial JSON string can still become valid.
+
+    Args:
+        value_text: Candidate text starting at a JSON string value.
+
+    Returns:
+        A tuple containing validity and the string end index when complete.
+    """
     if not value_text:
         return True, None
 
@@ -62,6 +89,14 @@ def is_valid_string_prefix(value_text: str) -> tuple[bool, int | None]:
 
 
 def is_valid_number_prefix(value_text: str) -> tuple[bool, int | None]:
+    """Check whether a partial JSON number can still become valid.
+
+    Args:
+        value_text: Candidate text starting at a JSON number value.
+
+    Returns:
+        A tuple containing validity and the number end index when complete.
+    """
     if not value_text:
         return True, None
 
@@ -96,6 +131,14 @@ def is_valid_number_prefix(value_text: str) -> tuple[bool, int | None]:
 
 
 def is_valid_boolean_prefix(value_text: str) -> tuple[bool, int | None]:
+    """Check whether a partial JSON boolean can still become valid.
+
+    Args:
+        value_text: Candidate text starting at a JSON boolean value.
+
+    Returns:
+        A tuple containing validity and the boolean end index when complete.
+    """
     if not value_text:
         return True, None
 
@@ -123,7 +166,16 @@ def is_valid_function_call_prefix(
         generated_text: str,
         functions: list[FunctionDefinition],
         ) -> bool:
-    """Function Call JSONとして完成可能なprefixか判定する。"""
+    """Check whether generated text can become a valid function call.
+
+    Args:
+        generated_text: Current decoded output prefix.
+        functions: Available function definitions.
+
+    Returns:
+        True if the prefix can still become schema-compliant JSON,
+        otherwise False.
+    """
     for function in functions:
         # ==== 関数の選択 ====
         parameter_names = list(function.parameters.keys())
@@ -184,8 +236,16 @@ def get_valid_token_ids(output_ids: list[int],
                         llm: Small_LLM_Model,
                         logits_len: int
                         ) -> list[int]:
-    """
-    生成途中のテキストを見て、次に出して良いtoken_idだけ返す
+    """Return token IDs that preserve the function-call constraint.
+
+    Args:
+        output_ids: Token IDs generated so far.
+        functions: Available function definitions.
+        llm: Model wrapper used for decoding token candidates.
+        logits_len: Number of candidate token IDs to check.
+
+    Returns:
+        Token IDs that keep the decoded output prefix valid.
     """
     valid_token_ids: list[int] = []
     current_text = llm.decode(output_ids)
@@ -207,6 +267,16 @@ def get_cached_token_text(token_id: int,
                           llm: Small_LLM_Model,
                           token_text_cache: dict[int, str]
                           ) -> str:
+    """Decode one token ID and cache the result.
+
+    Args:
+        token_id: Token ID to decode.
+        llm: Model wrapper used for decoding.
+        token_text_cache: Cache from token ID to decoded text.
+
+    Returns:
+        Decoded token text.
+    """
     if token_id not in token_text_cache:
         token_text_cache[token_id] = llm.decode([token_id])
 
@@ -219,6 +289,18 @@ def select_fast_constrained_token(output_ids: list[int],
                                   logits: list[float],
                                   token_text_cache: dict[int, str]
                                   ) -> int | None:
+    """Try to select a valid token from high-logit candidates first.
+
+    Args:
+        output_ids: Token IDs generated so far.
+        functions: Available function definitions.
+        llm: Model wrapper used for decoding candidates.
+        logits: Model scores for the next token.
+        token_text_cache: Cache from token ID to decoded text.
+
+    Returns:
+        A valid high-scoring token ID, or None if the fast path fails.
+    """
     current_text = llm.decode(output_ids)
     top_token_ids = heapq.nlargest(
         4096,
@@ -241,9 +323,18 @@ def generate_constrained_output(input_ids: list[int],
                                 functions: list[FunctionDefinition],
                                 llm: Small_LLM_Model
                                 ) -> list[int]:
-    """
-    logits取得→候補絞る→スコアの高いtokenを選択
-    →出力へ追加→completeなら終了
+    """Generate one complete function-call JSON object token by token.
+
+    Args:
+        input_ids: Encoded prompt token IDs, extended during generation.
+        functions: Available function definitions.
+        llm: Model wrapper used for logits and decoding.
+
+    Returns:
+        Generated token IDs for a complete function call.
+
+    Raises:
+        ValueError: If no complete function call is generated in time.
     """
     output_ids: list[int] = []
     token_text_cache: dict[int, str] = {}
@@ -284,14 +375,18 @@ def generate_constrained_output(input_ids: list[int],
 
 
 def parse_function_call(generated_text: str) -> dict[str, Any]:
-    '''
-    出力された文字列が辞書として正しいかどうかを確認
-    - dictかどうか
-    - name, parameters keyが含まれるか
-    - name, parametersのvalueがそれぞれstr, dictかどうか
-    OK: function_call(JSON)を返す
-    NG: ValueError
-    '''
+    """Parse generated text as the expected function-call object.
+
+    Args:
+        generated_text: Decoded generated text.
+
+    Returns:
+        Parsed function-call dictionary.
+
+    Raises:
+        ValueError: If the JSON shape is not a function-call object.
+        json.JSONDecodeError: If the text is not valid JSON.
+    """
     function_call = json.loads(generated_text)
 
     if not isinstance(function_call, dict):
@@ -316,7 +411,15 @@ def validate_function_call(
         function_call: dict[str, Any],
         functions: list[FunctionDefinition],
         ) -> bool:
-    """関数名、パラメータ名、パラメータ値の型が正しいか検証する。"""
+    """Validate a parsed function call against available definitions.
+
+    Args:
+        function_call: Parsed function-call object.
+        functions: Available function definitions.
+
+    Returns:
+        True if the name and parameters match a definition, otherwise False.
+    """
     function_name = function_call["name"]
 
     for function_definition in functions:
@@ -333,9 +436,14 @@ def is_complete_function_call(
         generated_text: str,
         functions: list[FunctionDefinition]
         ) -> bool:
-    """
-    生成されたテキストが正しい形かどうかを確認する
-    上記2つのfunctionを組み合わせる
+    """Check whether generated text is a complete valid function call.
+
+    Args:
+        generated_text: Decoded generated text.
+        functions: Available function definitions.
+
+    Returns:
+        True if the text is parseable and schema-compliant, otherwise False.
     """
     try:
         function_call = parse_function_call(generated_text)
@@ -352,7 +460,19 @@ def decode_result_to_function_call(
         functions: list[FunctionDefinition],
         llm: Small_LLM_Model,
         ) -> dict[str, Any]:
-    """生成されたtoken_id: list[int]をfunction_call: dict{str: Any}へ変換する。"""
+    """Decode generated token IDs into a validated function call.
+
+    Args:
+        result: Generated token IDs.
+        functions: Available function definitions.
+        llm: Model wrapper used for decoding.
+
+    Returns:
+        Validated function-call dictionary.
+
+    Raises:
+        ValueError: If the decoded function call does not match a definition.
+    """
     generated_text = llm.decode(result)
 
     function_call = parse_function_call(generated_text)

@@ -10,7 +10,12 @@ from .decoder import generate_outputs, decode_result_to_function_call
 
 
 def save_results(results: list[dict[str, Any]], output_path: str) -> None:
-    """Function Callの結果をJSONファイルへ書き込む。"""
+    """Write generated function-call results to a JSON file.
+
+    Args:
+        results: Function-call result objects to serialize.
+        output_path: Destination path for the output JSON file.
+    """
     output_dir = os.path.dirname(output_path)
     if output_dir:
         os.makedirs(output_dir, exist_ok=True)
@@ -18,9 +23,8 @@ def save_results(results: list[dict[str, Any]], output_path: str) -> None:
         json.dump(results, f, indent=2)
 
 
-# 結果をJSONファイルに書き出す
-# 結果をJSONファイルに書き出す
 def run() -> None:
+    """Run the CLI pipeline from input loading to output writing."""
     # LLMモデルを用意する
     llm = Small_LLM_Model()
 
@@ -69,6 +73,12 @@ def run() -> None:
 
 
 def main() -> int:
+    """Run the command-line program and return a process exit code.
+
+    Returns:
+        Zero on success, or one when a handled input or generation
+        error occurs.
+    """
     try:
         run()
     except ValueError as e:

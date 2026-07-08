@@ -10,6 +10,15 @@ def build_prompt(
         functions: list[FunctionDefinition],
         prompt_item: Prompt,
         ) -> str:
+    """Build the instruction prompt passed to the language model.
+
+    Args:
+        functions: Available function definitions.
+        prompt_item: User prompt item to convert into a function call.
+
+    Returns:
+        Prompt text used as the model input before constrained decoding.
+    """
     prompt = (
         "Return exactly one JSON object for a function call.\n"
         "Choose the best function from the list and fill all parameters.\n"

@@ -5,10 +5,25 @@ from typing import Any
 # ＝＝＝　インスタンス化のためのクラス　＝＝＝
 
 class ParameterDefinition(BaseModel):
+    """Function parameter metadata loaded from the definition file.
+
+    Attributes:
+        type: Declared JSON-compatible parameter type.
+    """
+
     type: str
 
 
 class FunctionDefinition(BaseModel):
+    """Callable function schema loaded from the function definition file.
+
+    Attributes:
+        name: Function name that may be selected by the model.
+        description: Natural-language description of the function behavior.
+        parameters: Mapping of parameter names to parameter definitions.
+        returns: Return value metadata from the definition file.
+    """
+
     name: str
     description: str
     parameters: dict[str, ParameterDefinition]
@@ -16,6 +31,12 @@ class FunctionDefinition(BaseModel):
 
 
 class Prompt(BaseModel):
+    """Single natural-language prompt item loaded from the input file.
+
+    Attributes:
+        prompt: User request that should be converted into a function call.
+    """
+
     prompt: str
 
 
@@ -25,7 +46,15 @@ def validate_parameter_value(
         value: Any,
         parameter_definition: ParameterDefinition,
         ) -> bool:
-    """値が宣言されたパラメータ型と一致するか検証する。"""
+    """Check whether a generated value matches a parameter definition.
+
+    Args:
+        value: Generated parameter value to validate.
+        parameter_definition: Expected parameter metadata.
+
+    Returns:
+        True if the value matches the declared type, otherwise False.
+    """
     parameter_type = parameter_definition.type
 
     if parameter_type == "number":
@@ -51,7 +80,16 @@ def validate_required_parameters(
         parameters: dict[str, Any],
         function_definition: FunctionDefinition,
         ) -> bool:
-    """関数定義と比較して正しい出力かどうかを確認"""
+    """Check generated parameters against a function definition.
+
+    Args:
+        parameters: Generated parameter mapping.
+        function_definition: Function schema to validate against.
+
+    Returns:
+        True if all required parameters are present with valid types,
+        otherwise False.
+    """
     expected_parameters = function_definition.parameters
 
     if parameters.keys() != expected_parameters.keys():
