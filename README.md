@@ -1,12 +1,67 @@
-# call me maybe 引き継ぎメモ
+*This project has been created as part of the 42 curriculum by rtsubuku.*
 
-## 2026/07/07 現在の作業方針
+# call me maybe
 
-このリポジトリでは 42 課題 `call me maybe` を進めている。
+## Description
 
-最終目標は、`Small_LLM_Model` を使って自然言語プロンプトから Function Call JSON を生成するCLIを完成させること。
+`call me maybe` is a function-calling project for small language models.
+The program reads natural-language prompts and a list of available function
+definitions, then produces structured JSON function calls.
 
-最終コマンド:
+For example, given the prompt:
+
+```text
+What is the sum of 2 and 3?
+```
+
+the program should not calculate and return `5`. Instead, it should return a
+machine-readable function call:
+
+```json
+{
+  "prompt": "What is the sum of 2 and 3?",
+  "name": "fn_add_numbers",
+  "parameters": {
+    "a": 2,
+    "b": 3
+  }
+}
+```
+
+The main goal is to make the output valid, parseable, and schema-compliant even
+when using a small LLM. The implementation uses the provided `llm_sdk`
+`Small_LLM_Model` wrapper and applies constrained decoding during generation.
+
+## Instructions
+
+### Requirements
+
+- Python 3.10 or later
+- `uv`
+- The provided `llm_sdk` directory at the repository root
+
+The project dependencies are managed through `pyproject.toml` and `uv.lock`.
+The reviewer can install them with:
+
+```sh
+uv sync
+```
+
+or:
+
+```sh
+make install
+```
+
+### Usage
+
+Run the default input files:
+
+```sh
+uv run python -m src
+```
+
+Run with explicit paths:
 
 ```sh
 uv run python -m src \
@@ -15,395 +70,312 @@ uv run python -m src \
   --output data/output/function_calling_results.json
 ```
 
-出力形式:
+The default paths are:
+
+- Function definitions: `data/input/functions_definition.json`
+- Prompts: `data/input/function_calling_tests.json`
+- Output: `data/output/function_calling_results.json`
+
+The output file is generated at runtime. The `data/output/` directory is ignored
+by Git and is not meant to be submitted.
+
+### Makefile Commands
+
+```sh
+make install
+```
+
+Installs project dependencies with `uv sync`.
+
+```sh
+make run
+```
+
+Runs the main CLI with the default arguments.
+
+```sh
+make debug
+```
+
+Runs the program through Python's debugger.
+
+```sh
+make clean
+```
+
+Removes Python caches and local tooling caches.
+
+```sh
+make lint
+```
+
+Runs:
+
+```sh
+uv run flake8 .
+uv run mypy . --warn-return-any --warn-unused-ignores --ignore-missing-imports --disallow-untyped-defs --check-untyped-defs
+```
+
+```sh
+make lint-strict
+```
+
+Runs `flake8` and `mypy --strict`.
+
+## Input Format
+
+The function definition file must contain a JSON array. Each function has:
+
+- `name`: function name
+- `description`: natural-language description
+- `parameters`: object mapping parameter names to their types
+- `returns`: return type metadata
+
+Example:
 
 ```json
 [
   {
-    "prompt": "What is the sum of 2 and 3?",
     "name": "fn_add_numbers",
+    "description": "Add two numbers together and return their sum.",
     "parameters": {
-      "a": 2,
-      "b": 3
+      "a": {
+        "type": "number"
+      },
+      "b": {
+        "type": "number"
+      }
+    },
+    "returns": {
+      "type": "number"
     }
   }
 ]
 ```
 
-## スレッドの役割分担
-
-このREADMEを書いた時点で、今後は以下のように作業を分ける。
-
-- このスレッド: `prompt_builder.py` のプロンプト修正・出力精度改善に特化する
-- 別スレッド: プロジェクト本体を前に進める
-  - `json_loader.py`
-  - `__main__.py`
-  - Makefile
-  - README提出用英語化
-  - flake8 / mypy
-  - 最終CLI確認
-
-別スレッドでは、プロンプト修正に深入りしすぎず、まず提出に必要なコード整備を進める。
-
-## 現在できていること
-
-`src/decoder.py` の constrained decoding 本体は大きく進んでいる。
-
-実装済みの中心関数:
-
-- `is_valid_string_prefix()`
-- `is_valid_number_prefix()`
-- `is_valid_boolean_prefix()`
-- `is_valid_function_call_prefix()`
-- `get_valid_token_ids()`
-- `generate_constrained_output()`
-- `parse_function_call()`
-- `validate_function_call()`
-- `decode_result_to_function_call()`
-
-constrained decoding の流れ:
-
-```text
-generate_constrained_output()
-  ↓
-LLMから logits を取る
-  ↓
-get_valid_token_ids()
-  ↓
-候補tokenを1個ずつ output_ids に足して decode
-  ↓
-is_valid_function_call_prefix(candidate_text, functions)
-  ↓
-正しいJSONになれる途中なら True
-  ↓
-True の token だけ残す
-  ↓
-select_constrained_token()
-  ↓
-valid token の中で一番logitsが高いtokenを選ぶ
-```
-
-つまり、完成後に壊れたJSONを落とすだけではなく、生成中に invalid token を選ばせない設計。
-
-## prefix parser の重要ポイント
-
-`is_valid_function_call_prefix()` は「完成JSONか」ではなく、
-
-```text
-この文字列は、まだ正しいFunction Call JSONになれる途中か？
-```
-
-を判定する。
-
-現在の読み方:
-
-```text
-function_prefix を読む
-remaining_text を作る
-
-for parameter:
-  parameter名を読む
-  parameter値を読む
-  remaining_text を値の後ろへ進める
-
-最後に }} を読む
-```
-
-例:
+The prompt file must contain a JSON array of objects with a `prompt` key:
 
 ```json
-{"name":"fn_add_numbers","parameters":{"a":2,"b":3}}
+[
+  {
+    "prompt": "What is the sum of 2 and 3?"
+  }
+]
 ```
 
-読み方:
+Malformed JSON, missing files, and invalid input shapes are reported with clear
+error messages.
 
-```text
-{"name":"fn_add_numbers","parameters":{
-"a":
-2
-,"b":
-3
-}}
-```
+## Output Format
 
-`value_text`, `index`, `end_index` の意味:
+The program writes a JSON array. Each item contains exactly:
 
-- `value_text`: parameter値から始まる文字列
-- `index`: `value_text` の中で今見ている位置
-- `end_index`: 値を読み終わった次の位置
+- `prompt`: the original prompt
+- `name`: the selected function name
+- `parameters`: the extracted arguments
 
-例:
-
-```text
-value_text = "123}}"
-end_index = 3
-remaining_text = value_text[end_index:]  # "}}"
-```
-
-`1}` は False ではない。
-
-```text
-1   -> number としてOK
-}   -> JSONの閉じカッコ途中
-1}  -> あと } が来れば完成できる
-1}} -> 完成
-```
-
-## 実行確認済みのこと
-
-一度、全プロンプトで JSON 生成まで到達している。
-
-出力例:
+Example:
 
 ```json
-{"name":"fn_add_numbers","parameters":{"a":2,"b":3}}
-{"name":"fn_add_numbers","parameters":{"a":265,"b":345}}
-{"name":"fn_greet","parameters":{"name":"shrek"}}
-{"name":"fn_greet","parameters":{"name":"john"}}
-{"name":"fn_reverse_string","parameters":{"s":"'hello'"}}
-{"name":"fn_reverse_string","parameters":{"s":"'world'"}}
-{"name":"fn_get_square_root","parameters":{"a":16}}
-{"name":"fn_get_square_root","parameters":{"a":144}}
-{"name":"fn_substitute_string_with_regex","parameters":{"source_string":"Hello 34 I'm 233 years old","regex":"[0-9]+","replacement":"NUMBERS"}}
+[
+  {
+    "prompt": "Greet john",
+    "name": "fn_greet",
+    "parameters": {
+      "name": "john"
+    }
+  }
+]
 ```
 
-JSON構造と parameter type という意味ではかなり通っている。
+## Algorithm Explanation
 
-ただし、regex系は意味的な精度がまだ不安定。
+The implementation uses constrained decoding instead of trusting the model to
+freely generate valid JSON.
 
-## 現在のプロンプト状況
+For each prompt, the program builds an instruction prompt containing:
 
-`src/prompt_builder.py` は現在、成功例を参考にした構造になっている。
+- the available function names
+- their parameter names and types
+- extraction rules
+- the user prompt
+- the required output shape
 
-現在の主な構成:
+The model is then asked to generate a compact JSON object shaped like:
+
+```json
+{"name":"function_name","parameters":{"key":"value"}}
+```
+
+During generation, the program does not accept arbitrary next tokens. It repeats
+the following loop:
+
+1. Send the current input token IDs to `Small_LLM_Model.get_logits_from_input_ids`.
+2. Try every possible next token ID from the logits range.
+3. Decode the candidate output prefix.
+4. Keep only tokens whose decoded text can still become a valid function-call
+   JSON object.
+5. Select the valid token with the highest logit score.
+6. Append it to the generated output.
+7. Stop when the generated text is complete JSON and matches the selected
+   function schema.
+
+The prefix validator enforces the following structure:
 
 ```text
-You are a strict AI assistant designed for function calling.
-
-[Available Functions]
-json.dumps(function_data, indent=2)
-
-[Rules]
-1. available functions から選ぶ
-2. function definition に基づいて required parameters を抽出する
-3. literal values を generalize しない
-4. quoted text は中身だけ使う
-5. 余計な punctuation を足さない
-6. valid JSON object だけ返す
-
-[Regex Parameter Rules]
-source_string / regex / replacement の役割を説明
-
-[Output Format]
-{"name": "function_name", "parameters": {"key": "value"}}
-
-[User Prompt]
-...
+{"name":"<known function name>","parameters":{...}}
 ```
 
-現在の regex ルール方針:
+It also validates parameter order, parameter names, and supported parameter
+types:
 
-```text
-When a function has source_string, regex, and replacement parameters:
-- source_string is the full text to edit.
-- regex is only the target part to find inside source_string.
-- replacement is only the new text to insert.
-- If the target is a broad class such as numbers or vowels, use a compact character class pattern.
-- If the target is a specific word, phrase, symbol, or quoted value, use that literal target.
-- Keep regex as short as possible while matching the requested target.
-```
+- `number`
+- `string`
+- `boolean`
 
-このプロンプト修正後の最新出力はまだ未確定。regex系2件を再実行して確認する必要がある。
+After generation, the output is parsed with `json.loads` and checked again
+against the selected `FunctionDefinition` Pydantic model. This second validation
+step ensures that only schema-compliant function calls are written to the final
+output file.
 
-## 最近の regex 問題
+## Design Decisions
 
-プロンプト修正前後で、以下のような問題が出ていた。
+### Pydantic Models
 
-期待:
+All structured project data is represented with Pydantic classes:
 
-```json
-{
-  "source_string": "Programming is fun",
-  "regex": "[aeiouAEIOU]",
-  "replacement": "*"
-}
-```
+- `FunctionDefinition`
+- `ParameterDefinition`
+- `Prompt`
 
-実際に出た悪い例:
+This keeps validation centralized and makes invalid input files easier to reject
+with useful errors.
 
-```json
-{
-  "source_string": "'Programming is fun'",
-  "regex": ".+?([aeiouAEIOU])",
-  "replacement": "*"
-}
-```
+### Compact JSON Generation
 
-期待:
+The constrained decoder targets compact JSON without spaces. This reduces the
+number of possible valid prefixes and makes the prefix parser simpler.
 
-```json
-{
-  "source_string": "The cat sat on the mat with another cat",
-  "regex": "cat",
-  "replacement": "dog"
-}
-```
+### LLM-Based Function Selection
 
-実際に出た悪い例:
+The implementation does not select functions with keyword heuristics. The LLM
+logits decide which valid token is preferred at each generation step. The
+constraint layer only prevents invalid structure and schema violations.
 
-```json
-{
-  "source_string": "'The cat sat on the mat with another cat'",
-  "regex": ".+cat",
-  "replacement": ".+dog"
-}
-```
+### Graceful Error Handling
 
-原因として考えていること:
+Input loading catches common file and JSON errors, then reports them as readable
+`ValueError` messages. The CLI catches those errors and prints them to standard
+error instead of crashing with a traceback.
 
-- `regex` という単語に小さいLLMが引っ張られ、過剰に regex 記号を足している
-- 否定形ルールや `.+`, `.*`, `()` などの禁止例をプロンプトに出すと、逆にその記号に引っ張られる可能性がある
-- そのため、現在は危険な具体記号をプロンプトから消し、`source_string / regex / replacement` の役割を肯定文で説明する方針に変更した
+## Performance Analysis
 
-## 別スレッドで最初にやるべきこと
+The implementation prioritizes correctness and JSON validity. On the included
+test inputs, it produces valid JSON and schema-compliant function calls.
 
-プロンプト確認をこのスレッドに任せるなら、別スレッドは以下から進める。
+The current decoder checks possible next tokens by decoding candidate prefixes.
+This is reliable and straightforward, but it is expensive because it scans the
+full logits range at each generated token. Long outputs, especially functions
+with several string parameters, are slower than short arithmetic or greeting
+calls.
 
-### 1. `__main__.py` の状態確認
+Possible optimizations include:
 
-`save_results()` に以下は入っている。
+- caching token-to-text decoding results
+- precomputing valid literal prefixes for function names and parameter names
+- reducing the candidate token set before full prefix validation
+- using the vocabulary file directly for token filtering
 
-```python
-output_dir = os.path.dirname(output_path)
-if output_dir:
-    os.makedirs(output_dir, exist_ok=True)
+## Reliability
 
-with open(output_path, 'w', encoding='utf-8') as f:
-    json.dump(results, f, indent=2)
-```
+The output is protected by two layers:
 
-目的:
+1. Prefix-level constrained decoding during generation.
+2. Full JSON parsing and schema validation after generation.
 
-- `data/output` がない場合も落ちない
-- 出力JSONを複数行で見やすくする
+This prevents malformed JSON from being written when generation succeeds. The
+program also reports malformed input files, missing files, and invalid schemas
+with clear messages.
 
-まず `python -m py_compile src/__main__.py` を通すこと。
+Current limitations:
 
-### 2. `json_loader.py` の3関数を実装する
+- The string prefix parser is intentionally simple and is best suited for normal
+  JSON strings without complex escaping.
+- The implementation supports the subject's common parameter types, but does not
+  implement complex nested argument schemas.
+- Runtime can increase for long string-heavy outputs.
 
-現在残っている未実装:
+## Challenges Faced
 
-```python
-load_json_file()
-validate_function_definitions()
-validate_prompt_items()
-```
+The main challenge was that small LLMs can choose the right function
+semantically while still producing invalid or inconsistent JSON when prompted
+normally. To solve this, generation was moved from free text output to
+token-by-token constrained decoding.
 
-これらは絶対にこの名前で必要というより、課題要件の例外処理・入力検証を満たすために実装した方がよい。
+Another challenge was extracting regex-related arguments. The model sometimes
+over-produced regex syntax or included surrounding quote marks in string
+parameters. The prompt rules were adjusted to clearly separate:
 
-役割:
+- the full source string
+- the target regex
+- the replacement text
 
-```text
-load_json_file()
-  open + json.load
-  FileNotFoundError / JSONDecodeError を ValueError などに変換
+The final validation step was added to catch any mismatch between generated
+arguments and the function definition schema.
 
-validate_function_definitions()
-  data が list か確認
-  各要素を FunctionDefinition にする
-  pydantic の ValidationError を扱う
+## Testing Strategy
 
-validate_prompt_items()
-  data が list か確認
-  各要素を Prompt にする
-  pydantic の ValidationError を扱う
-```
+The project was tested with the provided sample data in `data/input/`.
 
-最終的には:
+Checks performed:
 
-```python
-def load_function_definitions(file_path: str) -> list[FunctionDefinition]:
-    data = load_json_file(file_path)
-    return validate_function_definitions(data)
-
-
-def load_prompt_items(file_path: str) -> list[Prompt]:
-    data = load_json_file(file_path)
-    return validate_prompt_items(data)
-```
-
-に寄せるとよい。
-
-### 3. `prompt_builder.py` の未使用関数を整理する
-
-現在、下のような未実装関数が残っている可能性がある。
-
-```python
-build_function_schema()
-format_function_description()
-build_output_format_instruction()
-```
-
-使わないなら削除、使うなら最低限実装。
-
-`raise NotImplementedError` が残っている状態は提出前に避けたい。
-
-### 4. CLIとして最終確認
-
-個別スクリプトではなく、最終的に必ずこれで確認する。
+- Running the default CLI:
 
 ```sh
 uv run python -m src
 ```
 
-確認すること:
+- Running lint and type checks:
 
-- `data/output/function_calling_results.json` が生成される
-- JSONが list
-- 各要素に `prompt`, `name`, `parameters` がある
-- `name` が function definition に存在する
-- `parameters` の key と type が定義と一致する
+```sh
+make lint
+```
 
-## 後回しでよいもの
+- Inspecting the generated JSON output.
+- Confirming each result contains only `prompt`, `name`, and `parameters`.
+- Confirming selected function names exist in the definition file.
+- Confirming parameter names and value types match each function definition.
+- Testing arithmetic, greeting, string reversal, square root, and regex
+  replacement prompts.
 
-コード本体が動いてからでよい。
+Additional useful edge cases:
 
-- Makefile
-- README提出用の英語化
-- flake8
-- mypy
-- pycache / venv / 出力ファイルなどの整理
+- missing input files
+- invalid JSON files
+- empty prompt arrays
+- strings with punctuation
+- negative and decimal numbers
+- boolean parameters
+- ambiguous prompts with similar function names
 
-ただし提出前には必須。
+## Resources
 
-## 注意: git status が汚れている
+Classic references used for this project:
 
-現時点で `git status --short` には多数の変更・未追跡ファイルが出ている。
+- Python documentation: `argparse`, `json`, and file handling
+- Pydantic documentation for data validation
+- mypy documentation for static type checking
+- flake8 documentation for style checking
+- JSON specification and JSON object syntax
+- General references on constrained decoding and structured generation for LLMs
 
-特に注意:
+AI assistance was used as a development aid for:
 
-- `src/__pycache__/...`
-- `venv/...`
-- `data/output/function_calling_results.json`
-- `config/`
+- reviewing the subject requirements
+- organizing the project structure
+- improving error handling
+- checking README coverage against the subject
+- discussing constrained decoding design and edge cases
 
-これらは提出物に含めるべきでない可能性が高い。
-
-別スレッドで提出準備に入るときは `.gitignore` と不要ファイル整理を確認すること。
-
-## 今日のゴール案
-
-本体進行スレッドのゴール:
-
-1. `json_loader.py` の未実装を消す
-2. `__main__.py` の構文チェックを通す
-3. `prompt_builder.py` の未実装関数を整理する
-4. `uv run python -m src` で全件出力できる状態にする
-5. 出力JSONが schema-compliant か確認する
-
-プロンプト修正スレッドのゴール:
-
-1. regex系2〜3件だけを再実行する
-2. `source_string`, `regex`, `replacement` の精度を確認する
-3. 必要なら `prompt_builder.py` の文言をさらに調整する
-4. 改善したプロンプトを本体進行スレッドに共有する
+All generated suggestions were reviewed and adapted before being included in the
+project.
